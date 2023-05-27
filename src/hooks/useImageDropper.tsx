@@ -1,16 +1,23 @@
 import { useState, useEffect } from 'react';
 
+export interface IImageData {
+    file: File;
+    width: number;
+    height: number;
+}
+
 const useImageDropper = () => {
-    const [images, setImages] = useState<File[] | null>(null);
-    const [compressedImages, setCompressedImages] = useState<File[] | null>(null);
+    const [images, setImages] = useState<IImageData[] | null>(null);
+    const [compressedImages, setCompressedImages] = useState<IImageData[] | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
 
     useEffect(() => {
         if (images) {
             setLoading(true);
-            const compressedImages: File[] = [];
+            const compressedImages: IImageData[] = [];
 
-            const compressImage = (file: File, index: number) => {
+            const compressImage = (imageData: IImageData, index: number) => {
+                const { file } = imageData;
                 const img = new Image();
                 const reader = new FileReader();
 
@@ -45,7 +52,12 @@ const useImageDropper = () => {
                                 type: 'image/jpeg',
                                 lastModified: Date.now()
                             });
-                            compressedImages[index] = compressedFile;
+                            const compressedImageData: IImageData = {
+                                file: compressedFile,
+                                width,
+                                height
+                            };
+                            compressedImages[index] = compressedImageData;
                             setCompressedImages([...compressedImages]);
 
                             if (compressedImages.length === images.length) {
@@ -69,25 +81,63 @@ const useImageDropper = () => {
     const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
         e.preventDefault();
         const files = e.dataTransfer.files;
-        setImages(Array.from(files));
-    }
+
+        const imageFiles: File[] = [];
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            if (file.type.match('image.*')) {
+                imageFiles.push(file);
+            }
+        }
+
+        const imageDatas: IImageData[] = [];
+        for (let i = 0; i < imageFiles.length; i++) {
+            const file = imageFiles[i];
+            const img = new Image();
+            const reader = new FileReader();
+
+            reader.onload = (e: ProgressEvent<FileReader>) => {
+                img.onload = () => {
+                    const imageData: IImageData = {
+                        file,
+                        width: img.width,
+                        height: img.height
+                    };
+                    imageDatas.push(imageData);
+
+                    if (imageDatas.length === imageFiles.length) {
+                        setImages(imageDatas);
+                    }
+                };
+                img.src = e.target!.result as string;
+            };
+            reader.readAsDataURL(file);
+        }
+    };
 
     const handleDelete = (index: number) => {
-        const newImages = [...images!];
-        newImages.splice(index, 1);
-        setImages(newImages);
-    }
+        if (images && compressedImages) {
+            const newImages = [...images];
+            const newCompressedImages = [...compressedImages];
+            newImages.splice(index, 1);
+            newCompressedImages.splice(index, 1);
+            setImages(newImages);
+            setCompressedImages(newCompressedImages);
+        }
+    };
 
     const clear = () => {
         setImages(null);
         setCompressedImages(null);
-    }
+    };
 
     const upload = () => {
-        // TODO: Implement upload logic
-    }
+        if (compressedImages) {
+            // TODO: Implement image upload logic
+        }
+    };
 
-    return { compressedImages, images, loading, handleDrop, handleDelete, clear, upload };
-}
+    return { images, compressedImages, loading, handleDrop, handleDelete, clear, upload };
+};
 
 export default useImageDropper;
