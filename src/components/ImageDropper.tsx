@@ -55,7 +55,12 @@ const ImageThing: React.FC<{
 }> = ({ i, actualHeight, actualWidth, src, handleDelete }) => {
     const mainImageRef = React.useRef<HTMLDivElement>(null);
     // x is left, y is top
-    const [cropPosition, setCropPosition] = useState({ x: 10, y: 10, width: 100, height: 100 });
+    const [cropPosition, setCropPosition] = useState({ 
+        x: actualWidth > actualHeight ? (actualWidth - actualHeight) / 2 : 0,
+        y: actualHeight > actualWidth ? (actualHeight - actualWidth) / 2 : 0,
+        width: actualWidth > actualHeight ? actualHeight : actualWidth,
+        height: actualHeight > actualWidth ? actualWidth : actualHeight
+     });
     const { x, y, width, height } = cropPosition;
     const [dragOffset, setIsDragging] = useState<{ x: number, y: number } | null>(null);
     const [dragHandlePosition, setDragHandlePosition] = useState<{ x: number, y: number } | null>(null);
