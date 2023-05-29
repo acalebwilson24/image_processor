@@ -44,6 +44,68 @@ const ImageDropper = () => {
     )
 }
 
+type CropValues = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+}
+
+/** Resizes the image while maintaining the aspect ratio by pinning
+     *  the y value a given newY.
+     *  The height is then transformed to be twice the moved distance (by comparing newY to currentY) to maintain the position of the crop about the center.
+     *  The width is then calculated to maintain the aspect ratio, along with new values of x to again maintain the center of the crop.
+     * @param newY The new y value of the crop section
+     * @returns The new crop position (after the transform and constraints are applied)
+     */
+function scaleImageByYTransform(newY: number, currentCrop: CropValues, options: {
+    minH?: number;
+    minW?: number;
+    maxW?: number;
+    maxH?: number;
+}): CropValues {
+    const { x, y, width, height } = currentCrop;
+    let difference = y - newY;
+    let { minH = 0, minW = 0, maxW, maxH } = options;
+    let newHeight = height + (difference * 2)
+    let newWidth = width + (difference * 2)
+
+    // limit width and height
+    if (newHeight < minH) {
+        newHeight = minH;
+        newY = y;
+    } else if (maxH && newHeight > maxH) {
+        newHeight = maxH;
+        newY = y;
+    }
+
+    if (newWidth < minW) {
+        newWidth = minW;
+    } else if (maxW && newWidth > maxW) {
+        newWidth = maxW;
+    }
+
+    // limit x and y
+    let newX = x - (0.5 * (newWidth - width));
+    if (newX < 0) newX = 0;
+    if (maxW && newX + newWidth > maxW) newX = maxW - newWidth;
+
+    return { x: newX, y: newY, width: newWidth, height: newHeight };
+}
+
+function constrainByAspectRatio(newCropValues: CropValues, originalCropValues: CropValues): CropValues {
+    let { x, y, width, height } = newCropValues;
+    const aspectRatio = originalCropValues.width / originalCropValues.height;
+    if (width / height > aspectRatio) {
+        width = height * aspectRatio;
+        x = originalCropValues.x;
+    } else if (width / height < aspectRatio) {
+        height = width / aspectRatio;
+        y = originalCropValues.y;
+    }
+    return { x, y, width, height };
+}
+
 export default ImageDropper;
 
 const ImageThing: React.FC<{
@@ -55,15 +117,32 @@ const ImageThing: React.FC<{
 }> = ({ i, actualHeight, actualWidth, src, handleDelete }) => {
     const mainImageRef = React.useRef<HTMLDivElement>(null);
     // x is left, y is top
-    const [cropPosition, setCropPosition] = useState({ 
+    const [cropPosition, _setCropPosition] = useState<CropValues>({
         x: actualWidth > actualHeight ? (actualWidth - actualHeight) / 2 : 0,
         y: actualHeight > actualWidth ? (actualHeight - actualWidth) / 2 : 0,
         width: actualWidth > actualHeight ? actualHeight : actualWidth,
         height: actualHeight > actualWidth ? actualWidth : actualHeight
-     });
+    });
     const { x, y, width, height } = cropPosition;
     const [dragOffset, setIsDragging] = useState<{ x: number, y: number } | null>(null);
-    const [dragHandlePosition, setDragHandlePosition] = useState<{ x: number, y: number } | null>(null);
+    const [topDragHandlePosition, setTopDragHandlePosition] = useState<Pick<CropValues, "x" | "y"> | null>(null);
+    const [cornerIsDragging, setCornerIsDragging] = useState<boolean>(false);
+
+    function setCropPosition(newCropPosition: CropValues) {
+        let { x, y, width, height } = newCropPosition;
+        if (x < 0) x = 0;
+        if (y < 0) y = 0;
+        if (x + width > actualWidth) x = actualWidth - width;
+        if (y + height > actualHeight) y = actualHeight - height;
+        if (width > actualWidth) width = actualWidth;
+        if (height > actualHeight) height = actualHeight;
+
+        _setCropPosition({ x, y, width, height });
+
+        return { x, y, width, height };
+    }
+
+
 
     const leftBox = <div style={{ top: `${y}px`, left: 0, width: `${x}px`, height: `${height}px` }} className="LEFT absolute bg-slate-600/50"></div>
     const rightBox = <div style={{ top: `${y}px`, right: 0, width: `${actualWidth - x - width}px`, height: `${height}px` }} className="RIGHT absolute bg-slate-600/50"></div>
@@ -78,10 +157,9 @@ const ImageThing: React.FC<{
         const y = clientY - top;
         setIsDragging({ x, y });
     }}>
-
     </div>
 
-    const dragHandle = <div className='absolute' style={{ top: `${dragHandlePosition?.y || y}px`, left: `${x + (width / 2)}px`, width: `${20}px`, height: `${20}px`, transform: "translate(-50%, -150%)", background: "white" }} onMouseDown={(e) => {
+    const dragHandle = <div className='absolute' style={{ top: `${topDragHandlePosition?.y || y}px`, left: `${x + (width / 2)}px`, width: `${20}px`, height: `${20}px`, transform: "translate(-50%, -50%)", background: "white" }} onMouseDown={(e) => {
         e.preventDefault();
         // get position of drag handle within imageRef
         const imageBox = mainImageRef.current?.getBoundingClientRect();
@@ -89,19 +167,29 @@ const ImageThing: React.FC<{
         const { clientX, clientY } = e;
         const { left, top } = imageBox;
         const x = clientX - left;
-        const y = clientY - top + 20;
-        setDragHandlePosition({ x, y });
+        const y = clientY - top;
+        setTopDragHandlePosition({ x, y });
     }}>
-
     </div>
+
+    const cornerDragHandle = <div className='absolute' style={{
+        top: `${y + height}px`,
+        left: `${x + width}px`,
+        width: `${20}px`, height: `${20}px`, 
+        transform: "translate(-50%, -50%)", 
+        background: "white"
+    }} onMouseDown={(e) => {
+        e.preventDefault();
+        setCornerIsDragging(true);
+    }}></div>
 
     useEffect(() => {
         if (!dragOffset) return;
         const handleMouseMove = (e: MouseEvent) => {
             if (!mainImageRef.current) return;
             const { left, top } = mainImageRef.current.getBoundingClientRect();
-            const x = Math.min(Math.max(e.clientX - left - dragOffset.x, 0), actualWidth - width);
-            const y = Math.min(Math.max(e.clientY - top - dragOffset.y, 0), actualHeight - height);
+            const x = e.clientX - left - dragOffset.x
+            const y = e.clientY - top - dragOffset.y
             setCropPosition({ x, y, width, height });
         }
         const handleMouseUp = () => {
@@ -116,60 +204,34 @@ const ImageThing: React.FC<{
     }, [dragOffset, mainImageRef, width, height]);
 
     useEffect(() => {
-        if (!dragHandlePosition) return;
+        if (!topDragHandlePosition) return;
         const handleMouseMove = (e: MouseEvent) => {
             const imageBox = mainImageRef.current?.getBoundingClientRect();
             if (!imageBox) return;
-            const { clientX, clientY } = e;
-            const { left, top } = imageBox;
-            let newY = clientY - top + 20
-            let difference = y - newY;
-            let minH = 40;
-            let minW = 40;
-            let maxW = actualWidth;
-            let maxH = actualHeight;
-            let aspectRatio = width / height;
 
-            let newHeight = height + (difference * 2)
-            let newWidth = width + (difference * 2)
+            const { clientY } = e;
+            const { top } = imageBox;
+            let newY = clientY - top
+            let difference = y - newY
+            let scale = 1 + (difference / (height / 2))
+            let center = { x: x + width / 2, y: y + height / 2}
 
-            // limit width and height
-            if (newHeight < minH) {
-                newHeight = minH;
-                newY = y;
-            } else if (newHeight > maxH) {
-                newHeight = maxH;
-                newY = y;
-            }
+            const newCoords = scaleAboutOrigin(scale, cropPosition, center, { maxX: actualWidth, maxY: actualHeight })
+            setCropPosition(newCoords)
+            setTopDragHandlePosition(newCoords)
 
-            if (newWidth < minW) {
-                newWidth = minW;
-            } else if (newWidth > maxW) {
-                newWidth = maxW;
-            }
-
-            // constrain aspect ratio
-            if (newWidth / newHeight > aspectRatio) {
-                newWidth = newHeight * aspectRatio;
-            } else if (newWidth / newHeight < aspectRatio) {
-                newHeight = newWidth / aspectRatio;
-                newY = y;
-            }
-
-            // limit x and y
-            let newX = x - (0.5 * (newWidth - width));
-            if (newX < 0) newX = 0;
-            if (newX + newWidth > actualWidth) newX = actualWidth - newWidth;
-
-            if (newY < 0) newY = 0;
-            if (newY + newHeight > actualHeight) newY = actualHeight - newHeight;
-
-
-            setCropPosition({ ...cropPosition, y: newY, height: newHeight, width: newWidth, x: newX });
-            setDragHandlePosition({ x: newX, y: newY, });
+            // const scaledByYTransform = scaleImageByYTransform(newY, cropPosition, {
+            //     minH: 40,
+            //     minW: 40,
+            //     maxW: actualWidth,
+            //     maxH: actualHeight
+            // });
+            // const constrainedByAspectRatio = constrainByAspectRatio(scaledByYTransform, cropPosition);
+            // setCropPosition(constrainedByAspectRatio);
+            // setDragHandlePosition(constrainedByAspectRatio);
         }
         const handleMouseUp = () => {
-            setDragHandlePosition(null);
+            setTopDragHandlePosition(null);
         }
         window.addEventListener('mousemove', handleMouseMove);
         window.addEventListener('mouseup', handleMouseUp);
@@ -177,8 +239,53 @@ const ImageThing: React.FC<{
             window.removeEventListener('mousemove', handleMouseMove);
             window.removeEventListener('mouseup', handleMouseUp);
         }
-    }, [dragHandlePosition])
+    }, [topDragHandlePosition])
 
+
+    useEffect(() => {
+        if (!cornerIsDragging) return;
+        const handleMouseMove = (e: MouseEvent) => {
+            const imageBox = mainImageRef.current?.getBoundingClientRect();
+            if (!imageBox) return;
+
+            const { clientY, clientX } = e;
+            const { top, left } = imageBox;
+
+            console.log({ clientX, clientY, top, left, x, y, width, height })
+            let differenceX = (clientX - left) - (x + width)
+            let differenceY = (clientY - top) - (y + height )
+            console.log({ differenceX, differenceY })
+            let difference = Math.sqrt(differenceY ** 2 + differenceX ** 2)
+            let scale2 = 1 + (difference / (height / 2))
+            let scale = ((height + differenceY) * (width + differenceX)) / (height * width)
+            console.log({ scale, scale2 })
+            let origin = { x, y }
+
+            console.log({ scale, origin, differenceX, differenceY })
+
+            const newCoords = scaleAboutOrigin(scale, cropPosition, origin, { maxX: actualWidth, maxY: actualHeight })
+            setCropPosition(newCoords)
+
+            // const scaledByYTransform = scaleImageByYTransform(newY, cropPosition, {
+            //     minH: 40,
+            //     minW: 40,
+            //     maxW: actualWidth,
+            //     maxH: actualHeight
+            // });
+            // const constrainedByAspectRatio = constrainByAspectRatio(scaledByYTransform, cropPosition);
+            // setCropPosition(constrainedByAspectRatio);
+            // setDragHandlePosition(constrainedByAspectRatio);
+        }
+        const handleMouseUp = () => {
+            setCornerIsDragging(false);
+        }
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        }
+    }, [cornerIsDragging])
     return (
         <div className="flex flex-col items-center justify-center bg-slate-50 group p-2 relative">
             <div style={{ width: actualWidth, height: actualHeight }} className='relative' ref={mainImageRef}>
@@ -189,6 +296,7 @@ const ImageThing: React.FC<{
                 {bottomBox}
                 {centerBox}
                 {dragHandle}
+                {cornerDragHandle}
             </div>
             <span className="text-xs">{i.file.name}</span>
             <div className='hidden group-hover:block absolute top-0 right-0 p-2'>
@@ -196,4 +304,46 @@ const ImageThing: React.FC<{
             </div>
         </div>
     )
+}
+
+
+function scaleAboutOrigin(factor: number, initialValues: CropValues, origin: { x: number, y: number }, constraints: { maxX: number, maxY: number }): CropValues {
+    const { x, y, width, height } = initialValues;
+
+    let newX = origin.x * (1 - factor) + x * factor
+    let newY = origin.y * (1 - factor) + y * factor
+    let newWidth = width * factor
+    let newHeight = height * factor
+
+    if (newWidth > constraints.maxX) {
+        newWidth = constraints.maxX
+        newX = 0;
+        newY = y;
+        newHeight = height;
+    } else if (newWidth < 10) {
+        newWidth = 10
+        newX = x;
+        newY = y;
+        newHeight = width / height * newWidth;
+    }
+
+    if (newHeight > constraints.maxY) {
+        newHeight = constraints.maxY
+        newY = 0;
+        newX = x;
+        newWidth = width;
+    } else if (newHeight < 10) {
+        newHeight = 10
+        newY = y;
+        newX = x;
+        newWidth = height / width * newHeight;
+    }
+
+
+    return {
+        x: newX,
+        y: newY,
+        width: newWidth,
+        height: newHeight
+    }
 }
