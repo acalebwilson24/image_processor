@@ -175,8 +175,8 @@ const ImageThing: React.FC<{
     const cornerDragHandle = <div className='absolute' style={{
         top: `${y + height}px`,
         left: `${x + width}px`,
-        width: `${20}px`, height: `${20}px`, 
-        transform: "translate(-50%, -50%)", 
+        width: `${20}px`, height: `${20}px`,
+        transform: "translate(-50%, -50%)",
         background: "white"
     }} onMouseDown={(e) => {
         e.preventDefault();
@@ -214,7 +214,7 @@ const ImageThing: React.FC<{
             let newY = clientY - top
             let difference = y - newY
             let scale = 1 + (difference / (height / 2))
-            let center = { x: x + width / 2, y: y + height / 2}
+            let center = { x: x + width / 2, y: y + height / 2 }
 
             const newCoords = scaleAboutOrigin(scale, cropPosition, center, { maxX: actualWidth, maxY: actualHeight })
             setCropPosition(newCoords)
@@ -245,37 +245,59 @@ const ImageThing: React.FC<{
     useEffect(() => {
         if (!cornerIsDragging) return;
         const handleMouseMove = (e: MouseEvent) => {
+            console.log(cropPosition)
             const imageBox = mainImageRef.current?.getBoundingClientRect();
             if (!imageBox) return;
 
             const { clientY, clientX } = e;
             const { top, left } = imageBox;
 
-            console.log({ clientX, clientY, top, left, x, y, width, height })
-            let differenceX = (clientX - left) - (x + width)
-            let differenceY = (clientY - top) - (y + height )
-            console.log({ differenceX, differenceY })
-            let difference = Math.sqrt(differenceY ** 2 + differenceX ** 2)
-            let scale2 = 1 + (difference / (height / 2))
-            let scale = ((height + differenceY) * (width + differenceX)) / (height * width)
-            console.log({ scale, scale2 })
-            let origin = { x, y }
+            let newX = (clientX - left)
+            let newY = (clientY - top)
 
-            console.log({ scale, origin, differenceX, differenceY })
+            let origin = { x: x, y: y }
 
-            const newCoords = scaleAboutOrigin(scale, cropPosition, origin, { maxX: actualWidth, maxY: actualHeight })
+            let differenceX = newX - (x + width)
+            let differenceY = newY - (y + height)
+            let dimension: "x" | "y" = "x";
+            let difference = 0;
+            if (differenceX < 0) {
+                if (differenceY > 0) {
+                    difference = 0;
+                } else {
+                    if (differenceX < differenceY) {
+                        difference = differenceY
+                        dimension = "y"
+                    } else {
+                        difference = differenceX
+                        dimension = "x"
+                    }
+                }
+            } else {
+                if (differenceX > differenceY) {
+                    difference = differenceX
+                    dimension = "x"
+                } else {
+                    difference = differenceY
+                    dimension = "y"
+                }
+            }
+
+            let handleLocation = { x: x + width, y: y + height }
+            let distanceFromOriginToHandle = { x: handleLocation.x - origin.x, y: handleLocation.y - origin.y }
+
+            let direction = -1
+            if (differenceX > 0) {
+                direction = 1
+            }
+
+            let scaleX = (difference + distanceFromOriginToHandle.x) / distanceFromOriginToHandle.x
+            let scaleY = (difference + distanceFromOriginToHandle.y) / distanceFromOriginToHandle.y
+
+            const newCoords = scaleAboutOrigin(dimension == "x" ? scaleX : scaleY, cropPosition, origin, { maxX: actualWidth, maxY: actualHeight })
             setCropPosition(newCoords)
-
-            // const scaledByYTransform = scaleImageByYTransform(newY, cropPosition, {
-            //     minH: 40,
-            //     minW: 40,
-            //     maxW: actualWidth,
-            //     maxH: actualHeight
-            // });
-            // const constrainedByAspectRatio = constrainByAspectRatio(scaledByYTransform, cropPosition);
-            // setCropPosition(constrainedByAspectRatio);
-            // setDragHandlePosition(constrainedByAspectRatio);
         }
+
         const handleMouseUp = () => {
             setCornerIsDragging(false);
         }
