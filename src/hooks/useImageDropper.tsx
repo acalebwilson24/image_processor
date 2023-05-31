@@ -1,20 +1,27 @@
+import { CropValues } from '@/types';
 import { useState, useEffect } from 'react';
 
 export interface IImageData {
     file: File;
+    url: string;
     width: number;
     height: number;
 }
 
+export type IImageDataWithCrop  = IImageData & {
+    cropPosition: CropValues;
+}
+
 const useImageDropper = () => {
     const [images, setImages] = useState<IImageData[] | null>(null);
-    const [compressedImages, setCompressedImages] = useState<IImageData[] | null>(null);
+    const [compressedImages, setCompressedImages] = useState<IImageDataWithCrop[] | null>(null);
     const [loading, setLoading] = useState<boolean>(false);
 
     useEffect(() => {
         if (images) {
             setLoading(true);
-            const compressedImages: IImageData[] = [];
+            const compressedImages: IImageDataWithCrop[] = [];
+            const crops: CropValues[] = [];
 
             const compressImage = (imageData: IImageData, index: number) => {
                 const { file } = imageData;
@@ -52,12 +59,23 @@ const useImageDropper = () => {
                                 type: 'image/jpeg',
                                 lastModified: Date.now()
                             });
-                            const compressedImageData: IImageData = {
+
+                            const compressedImageData: IImageDataWithCrop = {
                                 file: compressedFile,
+                                url: URL.createObjectURL(compressedFile),
                                 width,
-                                height
+                                height,
+                                cropPosition: {
+                                    x: width > height ? ((width - height) / 2) / width : 0,
+                                    y: width > height ? 0 : ((height - width) / 2) / height,
+                                    width: width > height ? height / width : 1,
+                                    height: width > height ? 1 : width / height,
+                                    ratio: width / height
+                                }
                             };
+
                             compressedImages[index] = compressedImageData;
+
                             setCompressedImages([...compressedImages]);
 
                             if (compressedImages.length === images.length) {
@@ -101,7 +119,8 @@ const useImageDropper = () => {
                     const imageData: IImageData = {
                         file,
                         width: img.width,
-                        height: img.height
+                        height: img.height,
+                        url: e.target!.result as string
                     };
                     imageDatas.push(imageData);
 
@@ -137,7 +156,24 @@ const useImageDropper = () => {
         }
     };
 
-    return { images, compressedImages, loading, handleDrop, handleDelete, clear, upload };
+    // const setCropPosition = (index: number, cropLocation: CropValues) => {
+    //     if (crops) {
+    //         const newCrops = [...crops];
+    //         newCrops[index] = cropLocation;
+    //         setCrops(newCrops);
+    //     }
+    // };
+
+    const setCropPosition = (index: number, cropLocation: CropValues) => {
+        if (compressedImages) {
+            const newCompressedImages = [...compressedImages];
+            const newCrop = {...newCompressedImages[index].cropPosition, ...cropLocation};
+            newCompressedImages[index].cropPosition = newCrop;
+            setCompressedImages(newCompressedImages);
+        }
+    }
+
+    return { images, compressedImages, loading, handleDrop, handleDelete, clear, upload, setCropPosition };
 };
 
 export default useImageDropper;
