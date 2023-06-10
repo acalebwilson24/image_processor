@@ -1,6 +1,6 @@
-import { getConstrainedCoordinates, getScaledCoordinates } from "@/functions/scaleFunctions";
-import { CropValues, Origin } from "@/types";
-import React, { useState, useEffect } from "react";
+import useCropOverlay from "@/hooks/useCropOverlay";
+import { CropValues } from "@/types";
+import React from "react";
 
 type CropOverlayProps = {
     cropPosition: CropValues;
@@ -14,72 +14,10 @@ const CropOverlay: React.FC<CropOverlayProps> = ({
     setCropPosition
 }) => {
     const ref = React.useRef<HTMLDivElement>(null);
-    const [dragOffset, setDragOffset] = useState<{ x: number, y: number } | null>(null);
-    const [resizeOrigin, setResizeOrigin] = useState<Origin | null>(null);
+    
     // const [localCrop, _setLocalCrop] = useState<CropValues | null>(cropPosition);
-
-    function setLocalCrop(newCropPosition: CropValues) {
-        let { x, y, width: cropWidth, height: cropHeight, ratio } = newCropPosition;
-        if (x < 0) x = 0;
-        if (y < 0) y = 0;
-        if (x + cropWidth > 1) x = 1 - cropWidth;
-        if (y + cropHeight > 1) y = 1 - cropHeight;
-        if (cropWidth > 1) cropWidth = 1;
-        if (cropHeight > 1) cropHeight = 1;
-
-        setCropPosition({ x, y, width: cropWidth, height: cropHeight, ratio });
-        return { x, y, width: cropWidth, height: cropHeight };
-    }
-
-    useEffect(() => {
-        if (!dragOffset) return;
-        const handleMouseMove = (e: MouseEvent) => {
-            if (!ref.current) return;
-            const { left, top, width, height } = ref.current.getBoundingClientRect();
-            const x = (e.clientX - left - dragOffset.x) / width
-            const y = (e.clientY - top - dragOffset.y) / height
-            setLocalCrop({ x, y, width: cropPosition.width, height: cropPosition.height, ratio: cropPosition.ratio });
-        }
-        const handleMouseUp = () => {
-            setDragOffset(null);
-        }
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        }
-    }, [dragOffset]);
-
-    useEffect(() => {
-        if (!resizeOrigin) return;
-        const handleMouseMove = (e: MouseEvent) => {
-            const imageBox = ref.current?.getBoundingClientRect();
-            if (!imageBox) return;
-
-            const { clientY } = e;
-            const { top, height } = imageBox;
-            let newY = ((clientY - top) / height)
-            let difference = cropPosition.y - newY
-            let scale = 1 + (difference * 4)
-
-            const newCoords = getScaledCoordinates(cropPosition, resizeOrigin, scale)
-            const constrainedCoords = getConstrainedCoordinates(newCoords, resizeOrigin, { maxX: 1, maxY: 1 })
-            setLocalCrop(constrainedCoords)
-        }
-
-        const handleMouseUp = () => {
-            setResizeOrigin(null);
-        }
-
-        window.addEventListener('mousemove', handleMouseMove);
-        window.addEventListener('mouseup', handleMouseUp);
-        return () => {
-            window.removeEventListener('mousemove', handleMouseMove);
-            window.removeEventListener('mouseup', handleMouseUp);
-        }
-    }, [resizeOrigin])
-
+    const { setLocalCrop, dragOffset, setResizeOrigin, setDragOffset } = useCropOverlay(setCropPosition, cropPosition, ref);
+    
     if (cropPosition) {
         const { x, y, width: cropWidth, height: cropHeight } = cropPosition;
         // console.log({ x, y, cropWidth, cropHeight })

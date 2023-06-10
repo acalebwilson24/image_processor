@@ -11,6 +11,8 @@ The main functionality will be accessible via an API, with a basic frontend user
 - [ ] Finalise basic crop tool
 - [ ] Investigate different options for crop overlay
 - [ ] Complete basic design
+- [ ] Image resize option (default 512x512)
+- [ ] Download button
  
 ## Backend
 
